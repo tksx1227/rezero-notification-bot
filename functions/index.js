@@ -1,37 +1,54 @@
-// The Cloud Functions for Firebase SDK to create Cloud Functions and setup triggers.
+const { verifySignature, fetchNaroInfo } = require("./utils");
 const functions = require("firebase-functions");
+const admin = require("firebase-admin");
 const line = require("@line/bot-sdk");
-const crypto = require("crypto");
-require("dotenv").config();
+
+const ncode = "N2267BE";
+const NARO_URL = "https://ncode.syosetu.com";
 
 const client = new line.Client({
-  channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN,
-  channelSecret: process.env.CHANNEL_SECRET,
+  channelAccessToken: functions.config().env.channel_access_token,
+  channelSecret: functions.config().env.channel_secret,
 });
 
-const verifySignature = (originalSignature, body) => {
-  let text = JSON.stringify(body);
-  text = text.replace(
-    /([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g,
-    (e) => {
-      return (
-        "\\u" +
-        e.charCodeAt(0).toString(16).toUpperCase() +
-        "\\u" +
-        e.charCodeAt(1).toString(16).toUpperCase()
-      );
-    }
-  );
-  const signature = crypto
-    .createHmac("SHA256", process.env.CHANNEL_SECRET)
-    .update(text)
-    .digest("base64")
-    .toString();
-  if (signature !== originalSignature) {
-    functions.logger.error("Unauthorized");
-    return false;
+const updateDB = async (colName, docName, data) => {
+  const ref = admin.firestore().collection(colName).doc(docName);
+  await ref
+    .set({
+      lastPosted: data.lastPosted,
+      latestStory: data.latestStory,
+    })
+    .catch((err) => {
+      console.error(err);
+    });
+};
+
+const readDB = async (colName, docName) => {
+  const ref = admin.firestore().collection(colName).doc(docName);
+  const doc = await ref.get();
+  return doc.data();
+};
+
+// 30分おきに定期実行する
+const updateCheck = async (colName, docName, ncode) => {
+  const dbData = await readDB(colName, docName);
+  const apiData = await fetchNaroInfo(ncode);
+
+  if (dbData === undefined || apiData === undefined) {
+    await updateDB(colName, docName, apiData);
+    return;
   }
-  return true;
+
+  const dbTS = Date.parse(dbData.lastPosted);
+  const apiTS = Date.parse(apiData.lastPosted);
+  // テストのため不等号を使用
+  if (dbTS <= apiTS) {
+    await client.broadcast({
+      type: "text",
+      text: `最新話が更新されました！\n\n${NARO_URL}/${ncode}/${apiData.latestStory}`,
+    });
+    updateDB(colName, docName, apiData);
+  }
 };
 
 exports.callback = functions.https.onRequest(async (req, res) => {
@@ -40,16 +57,17 @@ exports.callback = functions.https.onRequest(async (req, res) => {
       return res.status(401).send("Unauthorized");
     }
 
-    let event = req.body.events[0];
+    const event = req.body.events[0];
     if (event === undefined) {
       return res.end();
     }
 
     if (event.type === "message") {
       if (event.message.type === "text") {
+        await updateCheck("rezero", "info", ncode);
         await client.replyMessage(event.replyToken, {
           type: "text",
-          text: event.message.text,
+          text: "hello",
         });
       }
     }
@@ -57,39 +75,4 @@ exports.callback = functions.https.onRequest(async (req, res) => {
   return res.send(req.method);
 });
 
-// The Firebase Admin SDK to access Firestore.
-const admin = require("firebase-admin");
 admin.initializeApp();
-
-// Take the text parameter passed to this HTTP endpoint and insert it into
-// Firestore under the path /messages/:documentId/original
-exports.addMessage = functions.https.onRequest(async (req, res) => {
-  // Grab the text parameter.
-  const original = req.query.text;
-  // Push the new message into Firestore using the Firebase Admin SDK.
-  const writeResult = await admin
-    .firestore()
-    .collection("messages")
-    .add({ original: original });
-  // Send back a message that we've successfully written the message
-  res.json({ result: `Message with ID: ${writeResult.id} added.` });
-});
-
-// Listens for new messages added to /messages/:documentId/original and creates an
-// uppercase version of the message to /messages/:documentId/uppercase
-exports.makeUppercase = functions.firestore
-  .document("/messages/{documentId}")
-  .onCreate((snap, context) => {
-    // Grab the current value of what was written to Firestore.
-    const original = snap.data().original;
-
-    // Access the parameter `{documentId}` with `context.params`
-    functions.logger.log("Uppercasing", context.params.documentId, original);
-
-    const uppercase = original.toUpperCase();
-
-    // You must return a Promise when performing asynchronous tasks inside a Functions such as
-    // writing to Firestore.
-    // Setting an 'uppercase' field in Firestore document returns a Promise.
-    return snap.ref.set({ uppercase }, { merge: true });
-  });
