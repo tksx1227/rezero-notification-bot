@@ -1,9 +1,8 @@
-const { verifySignature, fetchNaroInfo } = require("./utils");
+const { verifySignature, fetchNaroInfo, readDB, updateDB } = require("./utils");
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const line = require("@line/bot-sdk");
 
-const ncode = "N2267BE";
 const NARO_URL = "https://ncode.syosetu.com";
 
 const client = new line.Client({
@@ -11,31 +10,23 @@ const client = new line.Client({
   channelSecret: functions.config().env.channel_secret,
 });
 
-const updateDB = async (colName, docName, data) => {
-  const ref = admin.firestore().collection(colName).doc(docName);
-  await ref
-    .set({
-      lastPosted: data.lastPosted,
-      latestStory: data.latestStory,
-    })
-    .catch((err) => {
-      console.error(err);
-    });
-};
-
-const readDB = async (colName, docName) => {
-  const ref = admin.firestore().collection(colName).doc(docName);
-  const doc = await ref.get();
-  return doc.data();
-};
-
 // 30分おきに定期実行する
-const updateCheck = async (colName, docName, ncode) => {
-  const dbData = await readDB(colName, docName);
-  const apiData = await fetchNaroInfo(ncode);
+// exports.scheduledFunction = functions.pubsub
+//   .schedule("every 1 minutes")
+//   .onRun(async (_) => {
+//     const collections = [{ name: "rezero", ncode: "N2267BE" }];
+//     collections.forEach((collection) => {
+//       await checkUpdate(collection);
+//     });
+//     return null;
+//   });
+
+const checkUpdate = async (collection) => {
+  const dbData = await readDB(collection.name);
+  const apiData = await fetchNaroInfo(collection.ncode);
 
   if (dbData === undefined || apiData === undefined) {
-    await updateDB(colName, docName, apiData);
+    await updateDB(colName, apiData);
     return;
   }
 
@@ -43,15 +34,26 @@ const updateCheck = async (colName, docName, ncode) => {
   const apiTS = Date.parse(apiData.lastPosted);
   // テストのため不等号を使用
   if (dbTS <= apiTS) {
-    await client.broadcast({
-      type: "text",
-      text: `最新話が更新されました！\n\n${NARO_URL}/${ncode}/${apiData.latestStory}`,
-    });
-    updateDB(colName, docName, apiData);
+    sendBroadCastMessage(collection.name, collection.ncode, apiData);
   }
 };
 
-exports.callback = functions.https.onRequest(async (req, res) => {
+const scheduler = async () => {
+  const collections = [{ name: "rezero", ncode: "N2267BE" }];
+  collections.forEach((collection) => {
+    checkUpdate(collection);
+  });
+};
+
+const sendBroadCastMessage = async (colName, ncode, apiData) => {
+  await client.broadcast({
+    type: "text",
+    text: `【${apiData.title}】\n最新話が投稿されました！\n\n${NARO_URL}/${ncode}/${apiData.latestStory}`,
+  });
+  updateDB(colName, apiData);
+};
+
+exports.LineProxy = functions.https.onRequest(async (req, res) => {
   if (req.method === "POST") {
     if (!verifySignature(req.headers["x-line-signature"], req.body)) {
       return res.status(401).send("Unauthorized");
@@ -64,10 +66,10 @@ exports.callback = functions.https.onRequest(async (req, res) => {
 
     if (event.type === "message") {
       if (event.message.type === "text") {
-        await updateCheck("rezero", "info", ncode);
+        await scheduler();
         await client.replyMessage(event.replyToken, {
           type: "text",
-          text: "hello",
+          text: event.message.text,
         });
       }
     }

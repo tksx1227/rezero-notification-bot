@@ -1,4 +1,5 @@
 const functions = require("firebase-functions");
+const admin = require("firebase-admin");
 const crypto = require("crypto");
 const axios = require("axios");
 
@@ -38,6 +39,7 @@ const fetchNaroInfo = async (ncode) => {
     .get(url, { params })
     .then((res) => {
       const info = res.data[1];
+      data.title = info.title;
       data.lastPosted = info.general_lastup;
       data.latestStory = info.general_all_no;
     })
@@ -47,4 +49,19 @@ const fetchNaroInfo = async (ncode) => {
   return data;
 };
 
-module.exports = { verifySignature, fetchNaroInfo };
+const readDB = async (colName) => {
+  const ref = admin.firestore().collection(colName).doc("info");
+  const doc = await ref.get();
+  return doc.data();
+};
+
+const updateDB = async (colName, data) => {
+  const ref = admin.firestore().collection(colName).doc("info");
+  await ref.set({
+    title: data.title,
+    lastPosted: data.lastPosted,
+    latestStory: data.latestStory,
+  });
+};
+
+module.exports = { verifySignature, fetchNaroInfo, readDB, updateDB };
