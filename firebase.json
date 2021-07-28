@@ -5,7 +5,7 @@
   },
   "emulators": {
     "firestore": {
-      "port": 8888
+      "port": 8080
     }
   }
 }
