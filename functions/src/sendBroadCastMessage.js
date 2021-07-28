@@ -1,13 +1,9 @@
-const { updateDB } = require("./updateDB");
-
-const NARO_URL = "https://ncode.syosetu.com";
-
-const sendBroadCastMessage = async (colName, ncode, apiData) => {
+const sendBroadCastMessage = async (ncode, apiData) => {
+  const naro_url = "https://ncode.syosetu.com";
   await client.broadcast({
     type: "text",
-    text: `【${apiData.title}】\n最新話が投稿されました！\n\n${NARO_URL}/${ncode}/${apiData.latestStory}`,
+    text: `"${apiData.title}" の最新話が投稿されました！\n\n${naro_url}/${ncode}/${apiData.latestStory}`,
   });
-  updateDB(colName, apiData);
 };
 
 module.exports = { sendBroadCastMessage };

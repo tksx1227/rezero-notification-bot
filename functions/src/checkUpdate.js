@@ -15,7 +15,8 @@ const checkUpdate = async (collection) => {
   const dbTS = Date.parse(dbData.lastPosted);
   const apiTS = Date.parse(apiData.lastPosted);
   if (dbTS < apiTS && dbData.latestStory < apiData.latestStory) {
-    sendBroadCastMessage(collection.name, collection.ncode, apiData);
+    sendBroadCastMessage(collection.ncode, apiData);
+    updateDB(collection.name, apiData);
   }
 };
 
