@@ -9,14 +9,8 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "daily"
-    labels:
-      - "dependencies"
-      - "automerge"
       
   - package-ecosystem: "npm"
     directory: "/functions"
     schedule:
       interval: "daily"
-    labels:
-      - "dependencies"
-      - "automerge"
