@@ -16,7 +16,7 @@
   "dependencies": {
     "@line/bot-sdk": "^7.5.0",
     "@types/node": "^17.0.41",
-    "firebase-admin": "^10.2.0",
+    "firebase-admin": "^10.3.0",
     "firebase-functions": "^3.21.2"
   },
   "devDependencies": {
