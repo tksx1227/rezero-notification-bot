@@ -15,7 +15,7 @@
   "main": "lib/index.js",
   "dependencies": {
     "@line/bot-sdk": "^7.5.0",
-    "@types/node": "^18.7.2",
+    "@types/node": "^18.7.3",
     "firebase-admin": "^11.0.1",
     "firebase-functions": "^3.22.0"
   },
